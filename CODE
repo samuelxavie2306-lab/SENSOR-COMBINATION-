@@ -1,0 +1,201 @@
+#define BLYNK_TEMPLATE_ID "TMPL3USTfe988"
+#define BLYNK_TEMPLATE_NAME "Combination sensors"
+#define BLYNK_AUTH_TOKEN "lx7avmP033ZjD1df0mp13TFkT-xL1HrT"
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <DHT.h>
+
+char ssid[] = "batman";
+char pass[] = "atms1234";
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+#define DHTPIN 14
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
+
+#define LED1 13
+#define LED2 12
+
+BlynkTimer timer;
+
+bool notificationSent = false;
+
+BLYNK_WRITE(V6)
+{
+  int state = param.asInt();
+  digitalWrite(LED1, state);
+
+  Serial.print("LED1: ");
+  Serial.println(state);
+}
+
+BLYNK_WRITE(V7)
+{
+  int state = param.asInt();
+  digitalWrite(LED2, state);
+
+  Serial.print("LED2: ");
+  Serial.println(state);
+}
+
+void sendSensorData()
+{
+  int ldr  = analogRead(34);
+
+  int soil = analogRead(35);
+
+  int mq2  = analogRead(32);
+
+  int ir   = digitalRead(27);
+
+  float temp = dht.readTemperature();
+
+  float hum  = dht.readHumidity();
+
+  Serial.println("----------- SENSOR VALUES -----------");
+
+  Serial.print("LDR: ");
+  Serial.println(ldr);
+
+  Serial.print("SOIL: ");
+  Serial.println(soil);
+
+  Serial.print("MQ2: ");
+  Serial.println(mq2);
+
+  Serial.print("IR: ");
+  Serial.println(ir);
+
+  Serial.print("TEMP: ");
+  Serial.println(temp);
+
+  Serial.print("HUM: ");
+  Serial.println(hum);
+
+  // SEND TO BLYNK
+  Blynk.virtualWrite(V0, ldr);
+  Blynk.virtualWrite(V1, soil);
+  Blynk.virtualWrite(V2, mq2);
+  Blynk.virtualWrite(V3, ir);
+  Blynk.virtualWrite(V4, temp);
+  Blynk.virtualWrite(V5, hum);
+
+  // OLED DISPLAY
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.print("LDR:");
+  display.print(ldr);
+
+  display.setCursor(0,10);
+  display.print("SOIL:");
+  display.print(soil);
+
+  display.setCursor(0,20);
+  display.print("MQ2:");
+  display.print(mq2);
+
+  display.setCursor(0,30);
+  display.print("IR:");
+  display.print(ir);
+
+  display.setCursor(0,40);
+  display.print("TEMP:");
+  display.print(temp);
+
+  display.setCursor(0,50);
+  display.print("HUM:");
+  display.print(hum);
+
+  display.display();
+
+  // NOTIFICATION
+  if (ldr > 1000 && !notificationSent)
+  {
+    Blynk.logEvent("ldr_alert", "LDR crossed 1000");
+
+    Serial.println("LDR ALERT SENT!");
+
+    notificationSent = true;
+  }
+
+  if (ldr < 1000)
+  {
+    notificationSent = false;
+  }
+}
+
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(27, INPUT);
+
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+
+  dht.begin();
+
+  // OLED START
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  {
+    Serial.println("OLED FAILED");
+    while(1);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  Serial.println();
+  Serial.println("ESP32 STARTED");
+
+  Serial.println("Connecting to WiFi...");
+
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi CONNECTED");
+
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  Serial.println("Connecting to Blynk...");
+
+  Blynk.config(BLYNK_AUTH_TOKEN);
+
+  if (Blynk.connect())
+  {
+    Serial.println("BLYNK CONNECTED");
+  }
+  else
+  {
+    Serial.println("BLYNK FAILED");
+  }
+
+  timer.setInterval(2000L, sendSensorData);
+}
+
+void loop()
+{
+  Blynk.run();
+
+  timer.run();
+}
